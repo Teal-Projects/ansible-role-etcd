@@ -1,0 +1,77 @@
+---
+
+- name: Create directory {{ dir_config }}/temp
+  file:
+    path: '{{ dir_config }}'/temp
+    state: directory
+    owner: '{{ ansible_user_id }}'
+    group: '{{ ansible_user_id }}'
+    mode: 0755
+  become: yes
+
+##################################################
+# Binaries
+##################################################
+- block: #Install binaries
+    - name: Download and untar etcd binaries
+      unarchive:
+        src: '{{ etcd_url }}'
+        dest: {{ dir_config }}/temp/
+        remote_src: yes
+     
+    - name: Move etcd binaries to {{ dir_config }}
+      copy:
+        remote_src: yes
+        src: {{ dir_config }}/temp/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}
+        dest: {{ dir_config }}
+        mode: 0744
+      with_items:
+      - etcd
+      - etcdctl
+
+  tags: [binaries]
+
+##################################################
+# Token
+##################################################
+- block:
+
+    - name: Move certificates and key files
+      copy:
+        src: '{{ item }}'
+        dest: {{ dir_config }}
+        remote_src: yes
+      with_items:
+      - ca.pem
+      - kubernetes-key.pem
+      - kubernetes.pem
+
+  tags: [token]
+
+##################################################
+# Services
+##################################################
+- block: #install services files
+
+    - name: Move services files
+      template:
+        src: etcd.service.j2
+        dest: /etc/systemd/system/etcd.service
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: '0644'
+        backup: yes
+      become: yes
+      notify:
+      - restart etcd
+
+    - name: Move etcd env file to {{ dir_config }}
+      template:
+        src: etcd.env.j2
+        dest: {{ dir_config }}/etcd.env
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: '0644'
+        backup: yes
+
+  tags: [services]
